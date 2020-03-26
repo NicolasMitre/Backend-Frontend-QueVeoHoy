@@ -1,0 +1,26 @@
+{
+  "name": "que-veo-hoy-recursos",
+  "version": "1.0.0",
+  "description": "Servidor Que Veo Hoy",
+  "main": "servidor.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "watch": "nodemon servidor/servidor.js"
+  },
+  "keywords": [
+    "que",
+    "veo",
+    "hoy",
+    "servidor"
+  ],
+  "author": "Nicolas Ezequiel Melluso",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "cors": "^2.8.5",
+    "express": "^4.16.4",
+    "mysql": "^2.16.0"
+  }
+}
