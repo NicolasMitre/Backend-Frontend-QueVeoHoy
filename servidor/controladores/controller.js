@@ -1,129 +1,128 @@
-const conn = require("../lib/conexionbd");
+const bd = require("../lib/conexionbd");
 
-conn.connect(function(err) {
-  if (err) throw err;
-});
 const getPeliculas = (req, res) => {
-  const filtroAnio = req.query.anio
-    ? `p.anio = ${parseInt(req.query.anio)}`
-    : "1 = 1";
-  const filtroTitulo = req.query.titulo
-    ? `p.titulo like "%${req.query.titulo}%"`
-    : "1 = 1";
-  const filtroGenero = req.query.genero
-    ? `p.genero_id = ${parseInt(req.query.genero)}`
-    : "1 = 1";
-  const tipoOrden = req.query.tipo_orden ? req.query.tipo_orden : "";
-  const orderBy = req.query.columna_orden
-    ? `order by ${req.query.columna_orden} ${tipoOrden}`
+  const sql = `SELECT * FROM pelicula`;
+  const sqlTotal = `SELECT COUNT(id) as total FROM pelicula`;
+  const sqlParam = [];
+  let where = " WHERE id > 0";
+
+  const {
+    genero,
+    anio,
+    titulo,
+    columna_orden,
+    tipo_orden = "ASC",
+    pagina,
+    cantidad
+  } = req.query;
+
+  if (genero) {
+    where = `${where} AND genero_id = ?`;
+    sqlParam.push(genero);
+  }
+
+  if (anio) {
+    where = `${where} AND anio = ?`;
+    sqlParam.push(anio);
+  }
+
+  if (titulo) {
+    where = `${where} AND titulo LIKE ?`;
+    sqlParam.push(`%${titulo}%`);
+  }
+
+  const orderBy = columna_orden
+    ? `ORDER BY ${columna_orden} ${tipo_orden}`
     : "";
-  const tamanioPag = parseInt(req.query.cantidad) || 1;
-  const nroPagina = parseInt(req.query.pagina) || 1;
-  const offset = tamanioPag * (nroPagina - 1);
-  const filtro = `${filtroAnio} AND ${filtroTitulo} AND ${filtroGenero}`;
-  const sql = `
-        select p.* 
-        from pelicula as p
-        inner join genero as g on g.id = p.genero_id
-        where ?
-        ? 
-        limit ?
-        offset ?
-        `;
 
-  conn.query(sql, [filtro, orderBy, tamanioPag, offset], (err, result) => {
-    if (err) {
-      console.log(err);
-      return res.status(500).send("ERROR");
-    }
-    const resultado = {
-      peliculas: result,
-      total: 0
-    };
+  const limit = cantidad ? `LIMIT ${cantidad}` : "";
 
-    const sqlTotal = `select count(*) as total from pelicula as p where ?`;
-    conn.query(sqlTotal, [filtro], (err, result) => {
+  let pagination = "";
+
+  if (pagina && pagina > 1) pagination = `OFFSET ${(pagina - 1) * cantidad}`;
+
+  bd.query(
+    `${sql} ${where} ${orderBy} ${limit} ${pagination}`,
+    sqlParam,
+    (err, results) => {
       if (err) {
-        console.log("1", err);
-        return res.status(500).send("ERROR");
+        console.log(err);
+        res.status(500).send("Internal Error");
       }
-      const fila = result.pop();
-      resultado.total = fila.total ? fila.total : 0;
-      res.json(resultado);
-    });
-  });
+
+      finalResult = { peliculas: results, total: 0 };
+
+      bd.query(`${sqlTotal}${where}`, sqlParam, (err, countResults) => {
+        if (err) {
+          console.log(err);
+          res.status(500).send("Internal Error");
+        }
+
+        finalResult.total = countResults[0].total;
+        res.send(finalResult);
+      });
+    }
+  );
 };
 
 const getGeneros = (req, res) => {
-  const sql = "select * from genero";
-  conn.query(sql, (err, result) => {
-    if (err) return res.status(500).send("ERROR");
-    res.json({
-      generos: result
-    });
+  const sql = `SELECT id, nombre FROM genero`;
+  bd.query(sql, (err, results) => {
+    if (err) {
+      res.status(500).send("Internal Error");
+    }
+    res.send({ generos: results });
   });
 };
 
 const getPeliculaId = (req, res) => {
-  const id = parseInt(req.params.id);
-  const sql = `
-    select p.*, g.nombre
-        from pelicula p 
-        inner join genero g on g.id = p.genero_id
-        where p.id = ?`;
-  conn.query(sql, [id], (err, result) => {
-    if (err) return res.status(500).send("ERROR");
-    if (result.length === 0) return res.status(500).send("ERROR");
-    const sql2 = `
-        select a.*
-            from actor as a
-            inner join actor_pelicula ap on ap.actor_id = a.id
-            inner join pelicula as p on p.id = ap.pelicula_id
-            where p.id = ?`;
-    conn.query(sql2, [id], (err, result2) => {
-      if (err) return res.status(500).send("ERROR");
-      res.json({
-        pelicula: result[0],
-        genero: result[0]["nombre"],
-        actores: result2
-      });
+  const { id } = req.params;
+  let sql = `select p.id as 'pelicula_id', titulo, duracion, director, anio, fecha_lanzamiento , puntuacion, poster, trama, genero_id, nombre from pelicula p JOIN genero g ON (p.genero_id  = g.id ) where p.id = ?`;
+  bd.query(sql, [id], (err, results) => {
+    if (err) {
+      res.status(500).send(err);
+    }
+
+    sql = `select actor_id, nombre from actor_pelicula ap JOIN actor a ON (a.id = ap.actor_id ) where pelicula_id =?`;
+    bd.query(sql, [id], (err, results2) => {
+      res.send({ pelicula: results[0], actores: results2 });
     });
   });
 };
+
 const getRecomendacion = (req, res) => {
-  const filtroGenero = req.query.genero
-    ? `and g.nombre = '${req.query.genero}' `
-    : "";
-  const filtroAnioInicio = req.query.anio_inicio
-    ? `and p.anio >= ${req.query.anio_inicio}`
-    : "";
-  const filtroAnioFin = req.query.anio_fin
-    ? `and p.anio <= ${req.query.anio_fin}`
-    : "";
-  const filtroPuntuacion = req.query.puntuacion
-    ? `and p.puntuacion >= ${req.query.puntuacion}`
-    : "";
-  const sql = `
-    select * 
-    from pelicula  as p 
-    inner join genero g on g.id = p.genero_id
-    where 1=1
-    ?
-    ?
-    ?
-    ?
-     `;
-  conn.query(
-    sql,
-    [filtroGenero, filtroAnioInicio, filtroAnioFin, filtroPuntuacion],
-    (err, result) => {
+  const sql = `SELECT p.* FROM pelicula p JOIN genero g ON (p.genero_id = g.id)`;
+  const sqlParam = [];
+  let where = " WHERE p.id > 0";
+
+  const { genero, anio_inicio, anio_fin, puntuacion } = req.query;
+
+  if (genero) {
+    where = `${where} AND g.nombre = ?`;
+    sqlParam.push(genero);
+  }
+
+  if (anio_inicio && anio_fin) {
+    where = `${where} AND anio BETWEEN ? AND ?`;
+    sqlParam.push(anio_inicio);
+    sqlParam.push(anio_fin);
+  }
+
+  if (puntuacion) {
+    where = `${where} AND puntuacion = ?`;
+    sqlParam.push(puntuacion);
+  }
+
+  bd.query(`${sql} ${where}`, sqlParam, (err, results) => {
+    if (err) {
       console.log(err);
-      if (err) return res.status(500).send("Error");
-      res.json({
-        peliculas: result
-      });
+      res.status(500).send("Internal Error");
     }
-  );
+
+    finalResult = { peliculas: results };
+
+    res.send(finalResult);
+  });
 };
 
 module.exports = {
