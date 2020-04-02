@@ -76,6 +76,7 @@ const getGeneros = (req, res) => {
 };
 
 const getPeliculaId = (req, res) => {
+  //modular con p.titulo
   const { id } = req.params;
   let sql = `select p.id as 'pelicula_id', titulo, duracion, director, anio, fecha_lanzamiento , puntuacion, poster, trama, genero_id, nombre from pelicula p JOIN genero g ON (p.genero_id  = g.id ) where p.id = ?`;
   bd.query(sql, [id], (err, results) => {
@@ -109,7 +110,7 @@ const getRecomendacion = (req, res) => {
   }
 
   if (puntuacion) {
-    where = `${where} AND puntuacion = ?`;
+    where = `${where} AND puntuacion >= ?`;
     sqlParam.push(puntuacion);
   }
 
